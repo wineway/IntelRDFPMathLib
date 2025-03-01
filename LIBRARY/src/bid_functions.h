@@ -2646,16 +2646,25 @@ BID_EXTERN_C _IDEC_round _IDEC_glbround; // initialized to BID_ROUNDING_TO_NEARE
      BID_EXTERN_C void bid32_to_string (char *ps, BID_UINT32 * px
                                   _EXC_FLAGS_PARAM
                                   _EXC_MASKS_PARAM _EXC_INFO_PARAM);
+     BID_EXTERN_C void bid32_to_decimal_string (char *ps, BID_UINT32 * px
+                                  _EXC_FLAGS_PARAM
+                                  _EXC_MASKS_PARAM _EXC_INFO_PARAM);
      BID_EXTERN_C void bid64_from_string (BID_UINT64 * pres, char *ps
                                     _RND_MODE_PARAM _EXC_FLAGS_PARAM
                                     _EXC_MASKS_PARAM _EXC_INFO_PARAM);
      BID_EXTERN_C void bid64_to_string (char *ps, BID_UINT64 * px
                                   _EXC_FLAGS_PARAM
                                   _EXC_MASKS_PARAM _EXC_INFO_PARAM);
+     BID_EXTERN_C void bid64_to_decimal_string (char *ps, BID_UINT64 * px
+                                  _EXC_FLAGS_PARAM
+                                  _EXC_MASKS_PARAM _EXC_INFO_PARAM);
      BID_EXTERN_C void bid128_from_string (BID_UINT128 * pres, char *ps
                                      _RND_MODE_PARAM _EXC_FLAGS_PARAM
                                      _EXC_MASKS_PARAM _EXC_INFO_PARAM);
      BID_EXTERN_C void bid128_to_string (char *str, BID_UINT128 * px
+                                   _EXC_FLAGS_PARAM
+                                   _EXC_MASKS_PARAM _EXC_INFO_PARAM);
+     BID_EXTERN_C void bid128_to_decimal_string (char *str, BID_UINT128 * px
                                    _EXC_FLAGS_PARAM
                                    _EXC_MASKS_PARAM _EXC_INFO_PARAM);
 
@@ -4831,16 +4840,26 @@ BID_EXTERN_C _IDEC_round _IDEC_glbround; // initialized to BID_ROUNDING_TO_NEARE
      BID_EXTERN_C void bid32_to_string (char *ps, BID_UINT32 x
                                   _EXC_FLAGS_PARAM
                                   _EXC_MASKS_PARAM _EXC_INFO_PARAM);
+     BID_EXTERN_C void bid32_to_decimal_string (char *ps, BID_UINT32 x
+                                  _EXC_FLAGS_PARAM
+                                  _EXC_MASKS_PARAM _EXC_INFO_PARAM);
      BID_EXTERN_C BID_UINT32 bid32_from_string (char *ps
                                       _RND_MODE_PARAM _EXC_FLAGS_PARAM
                                       _EXC_MASKS_PARAM _EXC_INFO_PARAM);
      BID_EXTERN_C void bid64_to_string (char *ps, BID_UINT64 x
                                   _EXC_FLAGS_PARAM
                                   _EXC_MASKS_PARAM _EXC_INFO_PARAM);
+     BID_EXTERN_C void bid64_to_decimal_string (char *ps, BID_UINT64 x
+                                  _EXC_FLAGS_PARAM
+                                  _EXC_MASKS_PARAM _EXC_INFO_PARAM);
      BID_EXTERN_C BID_UINT64 bid64_from_string (char *ps
                                       _RND_MODE_PARAM _EXC_FLAGS_PARAM
                                       _EXC_MASKS_PARAM _EXC_INFO_PARAM);
      BID_EXTERN_C void bid128_to_string (char *str, BID_UINT128 x
+                                   _EXC_FLAGS_PARAM
+                                   _EXC_MASKS_PARAM _EXC_INFO_PARAM);
+
+     BID_EXTERN_C void bid128_to_decimal_string (char *str, BID_UINT128 x
                                    _EXC_FLAGS_PARAM
                                    _EXC_MASKS_PARAM _EXC_INFO_PARAM);
      BID_EXTERN_C BID_UINT128 bid128_from_string (char *ps

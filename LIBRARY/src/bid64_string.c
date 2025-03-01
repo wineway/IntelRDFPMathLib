@@ -244,6 +244,194 @@ bid64_to_string (char *ps, BID_UINT64 x
 
 #if DECIMAL_CALL_BY_REFERENCE
 void
+bid64_to_decimal_string (char *ps, BID_UINT64 * px
+		 _EXC_FLAGS_PARAM _EXC_MASKS_PARAM _EXC_INFO_PARAM) {
+  BID_UINT64 x;
+#else
+
+VOID_WRAPFN_OTHERTYPERES_DFP(bid64_to_decimal_string, char, 64)
+void
+bid64_to_decimal_string (char *ps, BID_UINT64 x
+		 _EXC_FLAGS_PARAM _EXC_MASKS_PARAM _EXC_INFO_PARAM) {
+#endif
+// the destination string (pointed to by ps) must be pre-allocated
+  BID_UINT64 sign_x, coefficient_x, D, ER10;
+  int istart, exponent_x, j, digits_x, bin_expon_cx;
+  int_float tempx;
+  BID_UINT32 MiDi[12], *ptr;
+  BID_UINT64 HI_18Dig, LO_18Dig, Tmp;
+  char *c_ptr_start, *c_ptr;
+  int midi_ind, k_lcv, len;
+  unsigned int save_fpsf;
+  char coefficient[MAX_FORMAT_DIGITS + 1]; // +1 for null terminator
+  int digits_total = 0;
+  int i;
+
+#if DECIMAL_CALL_BY_REFERENCE
+  x = *px;
+#endif
+
+  save_fpsf = *pfpsf; // place holder only
+  // unpack arguments, check for NaN or Infinity
+  if (!unpack_BID64 (&sign_x, &exponent_x, &coefficient_x, x)) {
+    // x is Inf. or NaN or 0
+
+    // Inf or NaN?
+    if ((x & 0x7800000000000000ull) == 0x7800000000000000ull) {
+      if ((x & 0x7c00000000000000ull) == 0x7c00000000000000ull) {
+	ps[0] = (sign_x) ? '-' : '+';
+	ps[1] = 'S';
+	j = ((x & MASK_SNAN) == MASK_SNAN)? 2: 1;
+	ps[j++] = 'N';
+	ps[j++] = 'a';
+	ps[j++] = 'N';
+	ps[j++] = 0;
+	return;
+      }
+      // x is Inf
+      ps[0] = (sign_x) ? '-' : '+';
+      ps[1] = 'I';
+      ps[2] = 'n';
+      ps[3] = 'f';
+      ps[4] = 0;
+      return;
+    }
+    // 0
+    istart = 0;
+    if (sign_x)
+      ps[istart++] = '-';
+    // For positive zero, don't add '+' sign
+
+    ps[istart++] = '0';
+    ps[istart++] = '\0';
+    return;
+  }
+  
+  // convert expon, coeff to ASCII
+  exponent_x -= DECIMAL_EXPONENT_BIAS;
+
+  istart = 0;
+  if (sign_x)
+    ps[istart++] = '-';
+  // For positive numbers, don't add '+' sign
+
+  // if zero or non-canonical, set coefficient to '0'
+  if ((coefficient_x > 9999999999999999ull) ||	// non-canonical
+      ((coefficient_x == 0))	// significand is zero
+     ) {
+    coefficient[0] = '0';
+    coefficient[1] = '\0';
+    digits_total = 1;
+  } else {
+    /* ****************************************************
+     This takes a bid coefficient in coefficient_x
+     and puts the converted character sequence in coefficient.
+     **************************************************** */
+    Tmp = coefficient_x >> 59;
+    LO_18Dig = (coefficient_x << 5) >> 5;
+    HI_18Dig = 0;
+    k_lcv = 0;
+
+    while (Tmp) {
+      midi_ind = (int) (Tmp & 0x000000000000003FLL);
+      midi_ind <<= 1;
+      Tmp >>= 6;
+      HI_18Dig += mod10_18_tbl[k_lcv][midi_ind++];
+      LO_18Dig += mod10_18_tbl[k_lcv++][midi_ind];
+      __L0_Normalize_10to18 (HI_18Dig, LO_18Dig);
+    }
+
+    ptr = MiDi;
+    __L1_Split_MiDi_6_Lead (LO_18Dig, ptr);
+    len = ptr - MiDi;
+    c_ptr_start = coefficient;
+    c_ptr = c_ptr_start;
+
+    /* now convert the MiDi into character strings */
+    __L0_MiDi2Str_Lead (MiDi[0], c_ptr);
+    for (k_lcv = 1; k_lcv < len; k_lcv++) {
+      __L0_MiDi2Str (MiDi[k_lcv], c_ptr);
+    }
+    digits_total = c_ptr - c_ptr_start;
+    coefficient[digits_total] = '\0';
+  }
+
+  // Format the number in a simple way without scientific notation
+  if (exponent_x >= 0) {
+    // Number >= 1
+    // Copy all digits
+    for (i = 0; i < digits_total; i++) {
+      ps[istart++] = coefficient[i];
+    }
+    
+    // Add trailing zeros if needed
+    for (i = 0; i < exponent_x; i++) {
+      ps[istart++] = '0';
+    }
+    
+    ps[istart] = '\0';
+  } else if (exponent_x + digits_total > 0) {
+    // Number with decimal point in the middle of digits
+    int decimal_position = digits_total + exponent_x;
+    
+    // Copy digits before decimal point
+    for (i = 0; i < decimal_position; i++) {
+      ps[istart++] = coefficient[i];
+    }
+    
+    // Add decimal point
+    ps[istart++] = '.';
+    
+    // Copy digits after decimal point
+    for (i = decimal_position; i < digits_total; i++) {
+      ps[istart++] = coefficient[i];
+    }
+    
+    // Remove trailing zeros
+    while (istart > 0 && ps[istart-1] == '0') {
+      istart--;
+    }
+    
+    // Remove trailing decimal point if needed
+    if (istart > 0 && ps[istart-1] == '.') {
+      istart--;
+    }
+    
+    ps[istart] = '\0';
+  } else {
+    // Number < 0.1
+    ps[istart++] = '0';
+    ps[istart++] = '.';
+    
+    // Add leading zeros after decimal point
+    for (i = 0; i < -(exponent_x + digits_total); i++) {
+      ps[istart++] = '0';
+    }
+    
+    // Add significant digits
+    for (i = 0; i < digits_total; i++) {
+      ps[istart++] = coefficient[i];
+    }
+    
+    // Remove trailing zeros
+    while (istart > 0 && ps[istart-1] == '0') {
+      istart--;
+    }
+    
+    // Remove trailing decimal point if needed
+    if (istart > 0 && ps[istart-1] == '.') {
+      istart--;
+    }
+    
+    ps[istart] = '\0';
+  }
+  
+  return;
+}
+
+
+#if DECIMAL_CALL_BY_REFERENCE
+void
 bid64_from_string (BID_UINT64 * pres, char *ps
                    _RND_MODE_PARAM _EXC_FLAGS_PARAM 
                    _EXC_MASKS_PARAM _EXC_INFO_PARAM) {

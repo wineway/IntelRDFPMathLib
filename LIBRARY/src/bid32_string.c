@@ -157,6 +157,207 @@ bid32_to_string (char *ps, BID_UINT32 x
  
 
 #if DECIMAL_CALL_BY_REFERENCE
+
+void
+bid32_to_decimal_string (char *ps, BID_UINT32 * px
+		 _EXC_FLAGS_PARAM _EXC_MASKS_PARAM _EXC_INFO_PARAM) {
+  BID_UINT32 x;
+#else
+VOID_WRAPFN_OTHERTYPERES_DFP(bid32_to_decimal_string, char, 32)
+void
+bid32_to_decimal_string (char *ps, BID_UINT32 x
+		 _EXC_FLAGS_PARAM _EXC_MASKS_PARAM _EXC_INFO_PARAM) {
+#endif
+  // the destination string (pointed to by ps) must be pre-allocated
+  BID_UINT64 CT;
+  int d, j, istart, istart0;
+  BID_UINT32 sign_x, coefficient_x;
+  int exponent_x;
+  unsigned int save_fpsf;
+  char coefficient[8]; // 7 digits max for BID32 + null terminator
+  int digits_total = 0;
+  int i;
+
+#if DECIMAL_CALL_BY_REFERENCE
+  x = *px;
+#endif
+
+  save_fpsf = *pfpsf; // place holder only
+  // unpack arguments, check for NaN or Infinity
+  if (!unpack_BID32 (&sign_x, &exponent_x, &coefficient_x, x)) {
+    // x is Inf. or NaN or 0
+    if((x&NAN_MASK32)==NAN_MASK32) {
+      ps[0] = (sign_x) ? '-' : '+';
+      ps[1] = 'S';
+      j = ((x & SNAN_MASK32) == SNAN_MASK32)? 2: 1;
+      ps[j++] = 'N';
+      ps[j++] = 'a';
+      ps[j++] = 'N';
+      ps[j++] = 0;
+      return;
+    }
+    if((x&INFINITY_MASK32)==INFINITY_MASK32) {
+      ps[0] = (sign_x) ? '-' : '+';
+      ps[1] = 'I';
+      ps[2] = 'n';
+      ps[3] = 'f';
+      ps[4] = 0;
+      return;
+    }
+    // 0
+    istart = 0;
+    if (sign_x)
+      ps[istart++] = '-';
+    // For positive zero, don't add '+' sign
+    ps[istart++] = '0';
+    ps[istart] = '\0';
+    return;
+  }
+  else // x is not special
+  {
+    // convert expon, coeff to ASCII
+    exponent_x -= DECIMAL_EXPONENT_BIAS_32;
+    
+    istart = 0;
+    if (sign_x)
+      ps[istart++] = '-';
+    // For positive numbers, don't add '+' sign
+    
+    // Extract coefficient digits
+    if(coefficient_x >= 1000000)
+    {
+      CT = (BID_UINT64)coefficient_x * 0x431BDE83ull;
+      CT >>= 32;
+      d = CT >> (50-32);
+      coefficient[0] = d + '0';
+      digits_total = 1;
+      
+      coefficient_x -= d*1000000;
+      
+      // get lower 6 digits
+      CT = (BID_UINT64)coefficient_x * 0x20C49BA6ull;
+      CT >>= 32;
+      d = CT >> (39-32);
+      coefficient[digits_total++] = bid_midi_tbl[d][0];
+      coefficient[digits_total++] = bid_midi_tbl[d][1];
+      coefficient[digits_total++] = bid_midi_tbl[d][2];
+      
+      d = coefficient_x - d*1000;
+      
+      coefficient[digits_total++] = bid_midi_tbl[d][0];
+      coefficient[digits_total++] = bid_midi_tbl[d][1];
+      coefficient[digits_total++] = bid_midi_tbl[d][2];
+      coefficient[digits_total] = '\0';
+    }
+    else if(coefficient_x >= 1000) {
+      CT = (BID_UINT64)coefficient_x * 0x20C49BA6ull;
+      CT >>= 32;
+      d = CT >> (39-32);
+      
+      istart0 = 0;
+      if(bid_midi_tbl[d][0] != '0') {
+        coefficient[digits_total++] = bid_midi_tbl[d][0];
+      }
+      if((bid_midi_tbl[d][1] != '0') || (digits_total > 0)) {
+        coefficient[digits_total++] = bid_midi_tbl[d][1];
+      }
+      coefficient[digits_total++] = bid_midi_tbl[d][2];
+      
+      d = coefficient_x - d*1000;
+      
+      coefficient[digits_total++] = bid_midi_tbl[d][0];
+      coefficient[digits_total++] = bid_midi_tbl[d][1];
+      coefficient[digits_total++] = bid_midi_tbl[d][2];
+      coefficient[digits_total] = '\0';
+    } else {
+      d = coefficient_x;
+      
+      if(bid_midi_tbl[d][0] != '0') {
+        coefficient[digits_total++] = bid_midi_tbl[d][0];
+      }
+      if((bid_midi_tbl[d][1] != '0') || (digits_total > 0)) {
+        coefficient[digits_total++] = bid_midi_tbl[d][1];
+      }
+      coefficient[digits_total++] = bid_midi_tbl[d][2];
+      coefficient[digits_total] = '\0';
+    }
+    
+    // Format the number in a simple way without scientific notation
+    if (exponent_x >= 0) {
+      // Number >= 1
+      // Copy all digits
+      for (i = 0; i < digits_total; i++) {
+        ps[istart++] = coefficient[i];
+      }
+      
+      // Add trailing zeros if needed
+      for (i = 0; i < exponent_x; i++) {
+        ps[istart++] = '0';
+      }
+      
+      ps[istart] = '\0';
+    } else if (exponent_x + digits_total > 0) {
+      // Number with decimal point in the middle of digits
+      int decimal_position = digits_total + exponent_x;
+      
+      // Copy digits before decimal point
+      for (i = 0; i < decimal_position; i++) {
+        ps[istart++] = coefficient[i];
+      }
+      
+      // Add decimal point
+      ps[istart++] = '.';
+      
+      // Copy digits after decimal point
+      for (i = decimal_position; i < digits_total; i++) {
+        ps[istart++] = coefficient[i];
+      }
+      
+      // Remove trailing zeros
+      while (istart > 0 && ps[istart-1] == '0') {
+        istart--;
+      }
+      
+      // Remove trailing decimal point if needed
+      if (istart > 0 && ps[istart-1] == '.') {
+        istart--;
+      }
+      
+      ps[istart] = '\0';
+    } else {
+      // Number < 0.1
+      ps[istart++] = '0';
+      ps[istart++] = '.';
+      
+      // Add leading zeros after decimal point
+      for (i = 0; i < -(exponent_x + digits_total); i++) {
+        ps[istart++] = '0';
+      }
+      
+      // Add significant digits
+      for (i = 0; i < digits_total; i++) {
+        ps[istart++] = coefficient[i];
+      }
+      
+      // Remove trailing zeros
+      while (istart > 0 && ps[istart-1] == '0') {
+        istart--;
+      }
+      
+      // Remove trailing decimal point if needed
+      if (istart > 0 && ps[istart-1] == '.') {
+        istart--;
+      }
+      
+      ps[istart] = '\0';
+    }
+  }
+  
+  return;
+}
+
+
+#if DECIMAL_CALL_BY_REFERENCE
 void
 bid32_from_string (BID_UINT32 * pres, char *ps
 		   _RND_MODE_PARAM _EXC_FLAGS_PARAM 

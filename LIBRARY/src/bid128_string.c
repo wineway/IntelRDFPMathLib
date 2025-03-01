@@ -274,6 +274,233 @@ bid128_to_string (char *str, BID_UINT128 x
 #define MAX_SEARCH              MAX_STRING_DIGITS_128-MAX_FORMAT_DIGITS_128-1
 
 
+#if DECIMAL_CALL_BY_REFERENCE
+
+void
+bid128_to_decimal_string (char *str,
+
+                  BID_UINT128 *
+                  px _EXC_FLAGS_PARAM _EXC_MASKS_PARAM
+                  _EXC_INFO_PARAM) {
+  BID_UINT128 x;
+#else
+
+VOID_WRAPFN_OTHERTYPERES_DFP(bid128_to_decimal_string, char, 128)
+void
+bid128_to_decimal_string (char *str, BID_UINT128 x
+    _EXC_FLAGS_PARAM _EXC_MASKS_PARAM _EXC_INFO_PARAM) {
+#endif
+  BID_UINT64 x_sign;
+  BID_UINT64 x_exp;
+  int exp; 	// unbiased exponent
+  // Note: C1.w[1], C1.w[0] represent x_signif_hi, x_signif_lo (all are BID_UINT64)
+  BID_UINT128 C1;
+  unsigned int k = 0; // pointer in the string
+  BID_UINT64 HI_18Dig, LO_18Dig, Tmp;
+  BID_UINT32 MiDi[12], *ptr;
+  char *c_ptr_start, *c_ptr;
+  int midi_ind, k_lcv, len;
+  int save_fpsf;
+
+#if DECIMAL_CALL_BY_REFERENCE
+  x = *px;
+#endif
+
+  save_fpsf = *pfpsf; // dummy
+
+  BID_SWAP128(x);
+  // check for NaN or Infinity
+  if ((x.w[1] & MASK_SPECIAL) == MASK_SPECIAL) {
+    // x is special
+    if ((x.w[1] & MASK_NAN) == MASK_NAN) { // x is NAN
+      if ((x.w[1] & MASK_SNAN) == MASK_SNAN) { // x is SNAN
+	// set invalid flag
+    str[0] = ((BID_SINT64)x.w[1]<0)? '-':'+';
+	str[1] = 'S';
+	str[2] = 'N';
+	str[3] = 'a';
+	str[4] = 'N';
+	str[5] = '\0';
+      } else { // x is QNaN
+    str[0] = ((BID_SINT64)x.w[1]<0)? '-':'+';
+	str[1] = 'N';
+	str[2] = 'a';
+	str[3] = 'N';
+	str[4] = '\0';
+      }
+    } else { // x is not a NaN, so it must be infinity
+      if ((x.w[1] & MASK_SIGN) == 0x0ull) { // x is +inf
+	str[0] = '+';
+	str[1] = 'I';
+	str[2] = 'n';
+	str[3] = 'f';
+	str[4] = '\0';
+      } else { // x is -inf
+	str[0] = '-';
+	str[1] = 'I';
+	str[2] = 'n';
+	str[3] = 'f';
+	str[4] = '\0';
+      }
+    }
+    return;
+  } else if (((x.w[1] & MASK_COEFF) == 0x0ull) && (x.w[0] == 0x0ull)) {
+    // x is 0
+    if (x.w[1] & MASK_SIGN)
+      str[k++] = '-';
+    // For positive zero, don't add '+' sign
+    str[k++] = '0';
+    str[k++] = '\0';
+    return;
+  } else { // x is not special and is not zero
+    // unpack x
+    x_sign = x.w[1] & MASK_SIGN;// 0 for positive, MASK_SIGN for negative
+    x_exp = x.w[1] & MASK_EXP;// biased and shifted left 49 bit positions
+    if ((x.w[1] & 0x6000000000000000ull) == 0x6000000000000000ull)
+       x_exp = (x.w[1]<<2) & MASK_EXP;// biased and shifted left 49 bit positions
+    C1.w[1] = x.w[1] & MASK_COEFF;
+    C1.w[0] = x.w[0];
+    exp = (x_exp >> 49) - 6176;
+
+    // determine sign's representation as a char
+    if (x_sign)
+      str[k++] = '-';// negative number
+    // For positive numbers, don't add '+' sign
+
+    // determine coefficient's representation as a decimal string
+    char coefficient[MAX_FORMAT_DIGITS_128 + 1]; // +1 for null terminator
+    int digits_total = 0;
+
+    // if zero or non-canonical, set coefficient to '0'
+    if ((C1.w[1] > 0x0001ed09bead87c0ull) ||
+        (C1.w[1] == 0x0001ed09bead87c0ull &&
+        (C1.w[0] > 0x378d8e63ffffffffull)) ||
+        ((x.w[1] & 0x6000000000000000ull) == 0x6000000000000000ull) ||
+        ((C1.w[1] == 0) && (C1.w[0] == 0))) {
+      coefficient[0] = '0';
+      coefficient[1] = '\0';
+      digits_total = 1;
+    } else {
+      /* ****************************************************
+         This takes a bid coefficient in C1.w[1],C1.w[0] 
+         and put the converted character sequence at location 
+         starting at coefficient. The function returns the number
+         of digits in digits_total.
+         **************************************************** */
+      /* Algorithm first decompose possibly 34 digits in hi and lo
+         18 digits. (The high can have at most 16 digits). */
+      Tmp = C1.w[0] >> 59;
+      LO_18Dig = (C1.w[0] << 5) >> 5;
+      Tmp += (C1.w[1] << 5);
+      HI_18Dig = 0;
+      k_lcv = 0;
+      // Tmp = {C1.w[1]{49:0}, C1.w[0]{63:59}}
+      // Lo_18Dig = {C1.w[0]{58:0}}
+
+      while (Tmp) {
+        midi_ind = (int) (Tmp & 0x000000000000003FLL);
+        midi_ind <<= 1;
+        Tmp >>= 6;
+        HI_18Dig += mod10_18_tbl[k_lcv][midi_ind++];
+        LO_18Dig += mod10_18_tbl[k_lcv++][midi_ind];
+        __L0_Normalize_10to18 (HI_18Dig, LO_18Dig);
+      }
+      ptr = MiDi;
+      if (HI_18Dig == 0LL) {
+        __L1_Split_MiDi_6_Lead (LO_18Dig, ptr);
+      } else {
+        __L1_Split_MiDi_6_Lead (HI_18Dig, ptr);
+        __L1_Split_MiDi_6 (LO_18Dig, ptr);
+      }
+      len = ptr - MiDi;
+      c_ptr_start = coefficient;
+      c_ptr = c_ptr_start;
+
+      /* now convert the MiDi into character strings */
+      __L0_MiDi2Str_Lead (MiDi[0], c_ptr);
+      for (k_lcv = 1; k_lcv < len; k_lcv++) {
+        __L0_MiDi2Str (MiDi[k_lcv], c_ptr);
+      }
+      digits_total = c_ptr - c_ptr_start;
+      coefficient[digits_total] = '\0';
+    }
+
+    // Format the number in a simple way without scientific notation
+    if (exp >= 0) {
+      // Number >= 1
+      // Copy all digits
+      int i;
+      for (i = 0; i < digits_total; i++) {
+        str[k++] = coefficient[i];
+      }
+      
+      // Add trailing zeros if needed
+      for (i = 0; i < exp; i++) {
+        str[k++] = '0';
+      }
+      
+      str[k] = '\0';
+    } else if (exp + digits_total > 0) {
+      // Number with decimal point in the middle of digits
+      int decimal_position = digits_total + exp;
+      int i;
+      
+      // Copy digits before decimal point
+      for (i = 0; i < decimal_position; i++) {
+        str[k++] = coefficient[i];
+      }
+      
+      // Add decimal point
+      str[k++] = '.';
+      
+      // Copy digits after decimal point
+      for (i = decimal_position; i < digits_total; i++) {
+        str[k++] = coefficient[i];
+      }
+      
+      // Remove trailing zeros
+      while (k > 0 && str[k-1] == '0') {
+        k--;
+      }
+      
+      // Remove trailing decimal point if needed
+      if (k > 0 && str[k-1] == '.') {
+        k--;
+      }
+      
+      str[k] = '\0';
+    } else {
+      // Number < 0.1
+      str[k++] = '0';
+      str[k++] = '.';
+      
+      // Add leading zeros after decimal point
+      int i;
+      for (i = 0; i < -(exp + digits_total); i++) {
+        str[k++] = '0';
+      }
+      
+      // Add significant digits
+      for (i = 0; i < digits_total; i++) {
+        str[k++] = coefficient[i];
+      }
+      
+      // Remove trailing zeros
+      while (k > 0 && str[k-1] == '0') {
+        k--;
+      }
+      
+      // Remove trailing decimal point if needed
+      if (k > 0 && str[k-1] == '.') {
+        k--;
+      }
+      
+      str[k] = '\0';
+    }
+  }
+  return;
+}
+
 
 #if DECIMAL_CALL_BY_REFERENCE
 
