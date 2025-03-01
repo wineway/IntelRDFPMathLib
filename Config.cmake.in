@@ -1,0 +1,13 @@
+@PACKAGE_INIT@
+
+# Find dependencies if any
+# include(CMakeFindDependencyMacro)
+# find_dependency(SomeDependency REQUIRED)
+
+# Include the targets file from the build tree if we're using FetchContent
+# or from the install location if we're using find_package
+if(NOT TARGET IntelRDFPMathLib::bid)
+  include("${CMAKE_CURRENT_LIST_DIR}/IntelRDFPMathLibTargets.cmake")
+endif()
+
+check_required_components(IntelRDFPMathLib)
